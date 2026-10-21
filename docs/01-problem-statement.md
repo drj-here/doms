@@ -144,7 +144,9 @@
 ### 7.3 Abandoned reservations (expiry)
 
 - **Problem:** stock is reserved but the customer never pays, so the stock is locked forever.
-- **Approach:** each reservation has an `expires_at`. A **scheduled job** (`@Scheduled`, every 30 seconds) releases expired reservations and moves their orders to `CANCELLED`.
+- **Approach:** the **expiry job lives in `order-service`**, which owns the state machine. A **scheduled job** (`@Scheduled`, every 30 seconds) finds `PAYMENT_PENDING` orders older than the expiry window and moves them to `CANCELLED` with a conditional update (§7.4). Only if that update wins does it publish `OrderCancelled`, and only then does `inventory-service` release the stock.
+- **Why not in `inventory-service`?** Inventory could release stock *after* a payment succeeded but *before* it heard about `OrderConfirmed`, which would oversell. A single owner of the decision removes that race.
+- `inventory-service` keeps a **safety-net sweep** with a much longer timeout. It handles orphan reservations, where stock was reserved but the order was never saved (for example, order-service crashed). Details are in the LLD.
 - **Expiry window: 5 minutes** (configurable). During a flash sale, long holds take stock away from customers who are ready to pay. 5 minutes is enough to complete a payment.
 
 ### 7.4 Late payment vs expiry (race between system processes)
@@ -227,6 +229,7 @@
 | D8 | Price snapshot in `order_items` | Orders are immutable financial records |
 | D9 | Deterministic mock payment via `paymentMethod` | Repeatable tests for every failure path |
 | D10 | No Redis in Phase 1 | Not justified by estimated load |
+| D11 | Expiry job in `order-service`; inventory only releases stock on `OrderCancelled` | One owner of the cancel decision prevents releasing stock for a paid order |
 
 ---
 
