@@ -1,0 +1,25 @@
+# Local development infrastructure for DOMS.
+# Credentials here are for local development only — never reuse them anywhere else.
+
+services:
+  postgres:
+    image: postgres:17.0-alpine
+    container_name: doms-postgres
+    environment:
+      POSTGRES_USER: doms_admin
+      POSTGRES_PASSWORD: doms_admin
+    ports:
+      - "5432:5432"
+    volumes:
+      - doms-pg-data:/var/lib/postgresql/data
+      # Runs only on the FIRST start, when the data volume is empty.
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U doms_admin"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    mem_limit: 512m
+
+volumes:
+  doms-pg-data:
